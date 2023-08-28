@@ -1,0 +1,17 @@
+package protocol
+
+var prefix = []byte{0x5A, 0xA5}
+var postfix = []byte{0x5B, 0xB5}
+var Init1 = []byte{0x02, 0x05, 0x0D, 0x07, 0x05, 0x07, 0x12}
+var Init1ACK = []byte{0x02}
+var Init2 = []byte{0x05, 0x01}
+var Measure = []byte{0xff, 0xfe, 0x01, 0x81, 0x39, 0x00, 0x00, 0x01}
+var HeartBeatReply = []byte{0x06}
+
+func Checksum(payload []byte) byte {
+	var sum byte = 0
+	for i := 0; i < len(payload); i++ {
+		sum += payload[i]
+	}
+	return 0xFF - (sum & 255)
+}
