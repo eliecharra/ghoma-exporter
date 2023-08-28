@@ -52,10 +52,10 @@ var ErrCmdUnknown = errors.New("unknown command")
 
 func Parse(payload []byte) (*Message, error) {
 	msg := &Message{Payload: payload}
+	msg.Command = Command(payload[0])
 	if Command(payload[0]).String() == "UNKNOWN" {
 		return msg, ErrCmdUnknown
 	}
-	msg.Command = Command(payload[0])
 
 	if msg.Command == CmdStatus {
 		msg.Status = &Status{}
