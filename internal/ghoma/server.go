@@ -35,19 +35,25 @@ type handler interface {
 	HandleStatus(device device, msg protocol.Message)
 }
 
+type ServerOptions struct {
+	ListenAddr string
+}
+
 type Server struct {
+	options  ServerOptions
 	devices  map[string]*device
 	handlers []handler
 }
 
-func NewServer() *Server {
+func NewServer(options ServerOptions) *Server {
 	return &Server{
+		options: options,
 		devices: make(map[string]*device),
 	}
 }
 
 func (s *Server) Start() (err error) {
-	srv, err := net.Listen("tcp", ":4196")
+	srv, err := net.Listen("tcp", s.options.ListenAddr)
 	if err != nil {
 		return err
 	}
