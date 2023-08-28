@@ -53,7 +53,6 @@ func (s *Server) Start() (err error) {
 	}
 	defer func(srv net.Listener) {
 		err = srv.Close()
-		return
 	}(srv)
 
 	for {

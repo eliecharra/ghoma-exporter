@@ -34,7 +34,7 @@ func Parse(payload []byte) (*Message, error) {
 
 	if msg.Command == CmdStatus {
 		msg.Status = &Status{}
-		if bytes.Compare(msg.Payload[9:9+len(Measure)], Measure) == 0 {
+		if bytes.Equal(msg.Payload[9:9+len(Measure)], Measure) {
 			msg.Status.Energy = &Energy{}
 
 			msg.Status.Energy.Kind = msg.Payload[len(msg.Payload)-5]

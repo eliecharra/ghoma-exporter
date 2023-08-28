@@ -34,7 +34,7 @@ func ReadMessage(r io.Reader) (*Message, error) {
 
 	// For consistency, check that the payload ends with the postfix
 	buffer = make([]byte, 2)
-	if n, err := reader.Read(buffer); n != 2 || err != nil || bytes.Compare(buffer, postfix) != 0 {
+	if n, err := reader.Read(buffer); n != 2 || err != nil || !bytes.Equal(buffer, postfix) {
 		return nil, errors.Join(errors.New("unable to read message postfix"), err)
 	}
 
