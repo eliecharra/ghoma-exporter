@@ -1,33 +1,39 @@
 package ghoma
 
 import (
+	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/eliecharra/ghoma/protocol"
+	"go.uber.org/zap"
 )
 
 type device struct {
+	logger *zap.Logger
+
 	ID              string
 	FirmwareVersion string
 	conn            net.Conn
 }
 
-func (d *device) Read() (*protocol.Message, error) {
+func (d *device) read() (*protocol.Message, error) {
 	msg, err := protocol.ReadMessage(d.conn)
 	if err != nil {
 		return msg, err
 	}
-	fmt.Printf("READ: %s\n", msg)
+	d.logger.Debug("read", zap.Any("msg", msg))
 	return msg, nil
 }
 
-func (d *device) Write(msg protocol.Message) error {
+func (d *device) write(msg protocol.Message) error {
 	if _, err := d.conn.Write(msg.ToBytes()); err != nil {
 		return err
 	}
-	fmt.Printf("WRITE: %s\n", msg)
+	d.logger.Debug("write", zap.Any("msg", msg))
 	return nil
 }
 
@@ -40,91 +46,138 @@ type ServerOptions struct {
 }
 
 type Server struct {
+	listener net.Listener
+	quit     chan interface{}
+	wg       sync.WaitGroup
+
 	options  ServerOptions
-	devices  map[string]*device
+	devices  sync.Map
 	handlers []handler
 }
 
 func NewServer(options ServerOptions) *Server {
 	return &Server{
+		quit:    make(chan interface{}),
 		options: options,
-		devices: make(map[string]*device),
 	}
 }
 
-func (s *Server) Start() (err error) {
-	srv, err := net.Listen("tcp", s.options.ListenAddr)
+func (s *Server) stop() {
+	close(s.quit)
+	s.listener.Close()
+	s.wg.Wait()
+}
+
+func (s *Server) Start(ctx context.Context) (err error) {
+	logger := zap.L()
+	listener, err := net.Listen("tcp", s.options.ListenAddr)
 	if err != nil {
 		return err
 	}
-	defer func(srv net.Listener) {
-		err = srv.Close()
-	}(srv)
+	s.listener = listener
+	s.wg.Add(1)
+	logger.Info("Server listening", zap.String("address", listener.Addr().String()))
+
+	go func() {
+		<-ctx.Done()
+		logger.Info("Stopping server")
+		s.stop()
+	}()
+
+	s.serve()
+	return nil
+}
+
+func (s *Server) serve() {
+	defer s.wg.Done()
 
 	for {
-		c, err := srv.Accept()
-		if err != nil {
-			fmt.Printf("Error connecting: %s", err)
-			continue
+		c, err := s.listener.Accept()
+		logger := zap.L()
+		if c != nil {
+			logger = zap.L().With(zap.String("remote", c.RemoteAddr().String()))
 		}
-		fmt.Printf("Plug connected: %s\n", c.RemoteAddr().String())
-
-		dev, err := s.register(c)
 		if err != nil {
-			fmt.Printf("Error to register device: %s", err)
-			continue
-		}
-
-		fmt.Printf("Device registrered, ID=%s, Version=%s\n", dev.ID, dev.FirmwareVersion)
-
-		go func() {
-			for {
-				msg, err := dev.Read()
-				if err != nil {
-					fmt.Printf("error reading: %s\n", err)
-					if msg != nil {
-						fmt.Printf("\tmessage: %s", msg)
-					}
-					// TODO delete device?
-					return
-				}
-				s.handle(dev, msg)
+			select {
+			case <-s.quit:
+				return
+			default:
+				logger.Error("error accepting new connection", zap.Error(err))
+				continue
 			}
+		}
+
+		s.wg.Add(1)
+		go func() {
+			logger.Info("Device connected")
+			s.handleDevice(c)
+			s.wg.Done()
 		}()
 	}
 }
 
-func (s *Server) register(c net.Conn) (*device, error) {
+func (s *Server) handleDevice(c net.Conn) {
+	defer c.Close()
+	logger := zap.L()
 
-	dev := &device{
-		conn: c,
+	dev, err := s.register(logger, c)
+	if err != nil {
+		logger.Error("unable to register device", zap.Error(err))
+		return
 	}
 
-	if err := dev.Write(*protocol.MustParse(protocol.Init1)); err != nil {
+	logger = zap.L().With(zap.String("device_id", dev.ID))
+	dev.logger = logger
+	logger.Info("Device registered", zap.String("firmware_version", dev.FirmwareVersion))
+
+	for {
+		msg, err := dev.read()
+		if err != nil {
+			if msg != nil {
+				logger = logger.With(zap.Any("msg", msg))
+			}
+			if errors.Is(err, protocol.ErrCmdUnknown) {
+				logger.Debug("unknown command")
+				continue
+			}
+			logger.Error("read error", zap.Error(err))
+			return
+		}
+		s.handle(dev, msg)
+	}
+}
+
+func (s *Server) register(logger *zap.Logger, c net.Conn) (*device, error) {
+	dev := &device{
+		logger: logger,
+		conn:   c,
+	}
+
+	if err := dev.write(*protocol.MustParse(protocol.Init1)); err != nil {
 		return nil, err
 	}
 
-	msg, err := dev.Read()
+	msg, err := dev.read()
 	if err != nil {
 		return nil, err
 	}
 
-	if err := dev.Write(*protocol.MustParse(protocol.Init1ACK)); err != nil {
+	if err := dev.write(*protocol.MustParse(protocol.Init1ACK)); err != nil {
 		return nil, err
 	}
 
 	dev.ID = hex.EncodeToString(msg.Payload[6:9])
 
-	if err := dev.Write(*protocol.MustParse(protocol.Init2)); err != nil {
+	if err := dev.write(*protocol.MustParse(protocol.Init2)); err != nil {
 		return nil, err
 	}
 
-	_, err = dev.Read()
+	_, err = dev.read()
 	if err != nil {
 		return nil, err
 	}
 
-	msg, err = dev.Read()
+	msg, err = dev.read()
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +189,7 @@ func (s *Server) register(c net.Conn) (*device, error) {
 		msg.Payload[len(msg.Payload)-1],
 	)
 
-	s.devices[dev.ID] = dev
+	s.devices.Store(dev.ID, dev)
 
 	return dev, nil
 }
@@ -144,8 +197,9 @@ func (s *Server) register(c net.Conn) (*device, error) {
 func (s *Server) handle(dev *device, msg *protocol.Message) {
 	switch msg.Command {
 	case protocol.CmdHeartBeat:
-		if err := dev.Write(*protocol.MustParse(protocol.HeartBeatReply)); err != nil {
+		if err := dev.write(*protocol.MustParse(protocol.HeartBeatReply)); err != nil {
 			// TODO log error unable to send heartbeat
+			_ = ""
 		}
 	case protocol.CmdStatus:
 		for _, h := range s.handlers {

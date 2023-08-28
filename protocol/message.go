@@ -3,8 +3,8 @@ package protocol
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
-	"fmt"
 )
 
 type Status struct {
@@ -13,8 +13,33 @@ type Status struct {
 }
 
 type Energy struct {
-	Kind  uint8
-	Value int64
+	kind  uint8
+	value int64
+}
+
+func (e *Energy) Kind() string {
+	switch e.kind {
+	case 1:
+		return "POWER"
+	case 2:
+		return "ENERGY"
+	case 3:
+		return "VOLTAGE"
+	case 4:
+		return "CURRENT"
+	case 5:
+		return "FREQUENCY"
+	case 7:
+		return "MAX_POWER"
+	case 8:
+		return "COSPHI"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+func (e *Energy) Value() int64 {
+	return e.value
 }
 
 type Message struct {
@@ -37,8 +62,8 @@ func Parse(payload []byte) (*Message, error) {
 		if bytes.Equal(msg.Payload[9:9+len(Measure)], Measure) {
 			msg.Status.Energy = &Energy{}
 
-			msg.Status.Energy.Kind = msg.Payload[len(msg.Payload)-5]
-			msg.Status.Energy.Value = int64(uint32(msg.Payload[len(msg.Payload)-3])<<16 +
+			msg.Status.Energy.kind = msg.Payload[len(msg.Payload)-5]
+			msg.Status.Energy.value = int64(uint32(msg.Payload[len(msg.Payload)-3])<<16 +
 				uint32(msg.Payload[len(msg.Payload)-2])<<8 +
 				uint32(msg.Payload[len(msg.Payload)-1]))
 		} else {
@@ -82,18 +107,46 @@ func (m Message) ToBytes() []byte {
 	return msg
 }
 
-func (m Message) String() string {
-	str := fmt.Sprintf("len: %d, cmd: %s, data: %s", len(m.Payload), m.Command, hex.EncodeToString(m.Payload))
+func (m Message) MarshalJSON() ([]byte, error) {
+	type energy struct {
+		Kind  string `json:"kind"`
+		Value int64  `json:"value"`
+	}
+
+	type status struct {
+		Switch string  `json:"switch,omitempty"`
+		Energy *energy `json:"energy,omitempty"`
+	}
+
+	data := &struct {
+		Payload string  `json:"payload,omitempty"`
+		Command string  `json:"command"`
+		Status  *status `json:"status,omitempty"`
+	}{
+		Command: m.Command.String(),
+	}
+
+	if data.Command == "UNKNOWN" {
+		data.Payload = hex.EncodeToString(m.Payload)
+	}
 
 	if m.Status != nil {
-		str += "\n\tStatus = "
+		data.Status = &status{}
 		if m.Status.Switch != nil {
-			str += fmt.Sprintf("switch: %t", *m.Status.Switch)
+			switch *m.Status.Switch {
+			case true:
+				data.Status.Switch = "ON"
+			case false:
+				data.Status.Switch = "OFF"
+			}
 		}
 		if m.Status.Energy != nil {
-			str += fmt.Sprintf("energy: %+v", *m.Status.Energy)
+			e := &energy{}
+			e.Kind = m.Status.Energy.Kind()
+			e.Value = m.Status.Energy.Value()
+			data.Status.Energy = e
 		}
 	}
 
-	return str
+	return json.Marshal(data)
 }
