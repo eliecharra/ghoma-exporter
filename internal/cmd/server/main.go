@@ -66,7 +66,9 @@ func main() {
 	zap.L().Info("Listening", zap.String("address", conf.ListenAddress))
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil {
-			zap.L().Fatal("Unable to start exporter", zap.Error(err))
+			if !errors.Is(err, http.ErrServerClosed) {
+				zap.L().Fatal("Unable to start exporter", zap.Error(err))
+			}
 		}
 	}()
 
