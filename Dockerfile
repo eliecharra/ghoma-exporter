@@ -3,7 +3,7 @@ WORKDIR /src
 ADD go.mod go.sum ./
 RUN go mod download
 ADD . .
-RUN CGO_ENABLED=0 go build -o ghoma-exporter
+RUN CGO_ENABLED=0 go build -o ghoma-exporter ./internal/cmd/server
 
 FROM scratch
 COPY --from=build /src/ghoma-exporter /bin/ghoma-exporter
