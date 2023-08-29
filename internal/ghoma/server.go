@@ -34,10 +34,11 @@ type Server struct {
 	handlers []handler
 }
 
-func NewServer(options ServerOptions) *Server {
+func NewServer(options ServerOptions, handlers ...handler) *Server {
 	return &Server{
-		quit:    make(chan interface{}),
-		options: options,
+		quit:     make(chan interface{}),
+		handlers: handlers,
+		options:  options,
 	}
 }
 
