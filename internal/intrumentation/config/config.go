@@ -22,7 +22,7 @@ func Get() (*Config, error) {
 	viper.AutomaticEnv()
 
 	viper.SetDefault("ghoma_listen_address", ":4196")
-	viper.SetDefault("listen_address", ":9101")
+	viper.SetDefault("listen_address", ":10005")
 	viper.SetDefault("env", "prod")
 	viper.SetDefault("log_level", "info")
 
