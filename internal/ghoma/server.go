@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"go.uber.org/zap"
 
@@ -26,8 +27,10 @@ type Server struct {
 	quit     chan interface{}
 	wg       sync.WaitGroup
 
+	devices      sync.Map
+	devicesCount atomic.Uint64
+
 	options  ServerOptions
-	devices  sync.Map
 	handlers []handler
 }
 
@@ -117,6 +120,7 @@ func (s *Server) handleDevice(c net.Conn) {
 				continue
 			}
 			logger.Error("read error", zap.Error(err))
+			s.devicesCount.Add(^uint64(0))
 			return
 		}
 		s.handle(dev, msg)
@@ -166,6 +170,7 @@ func (s *Server) register(logger *zap.Logger, c net.Conn) (*Device, error) {
 	)
 
 	s.devices.Store(dev.ID, dev)
+	s.devicesCount.Add(1)
 
 	return dev, nil
 }
