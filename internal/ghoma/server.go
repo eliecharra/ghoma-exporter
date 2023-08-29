@@ -57,7 +57,7 @@ func (s *Server) Start(ctx context.Context) (err error) {
 	}
 	s.listener = listener
 	s.wg.Add(1)
-	logger.Info("Server listening", zap.String("address", listener.Addr().String()))
+	logger.Info("Ghoma server listening", zap.String("address", listener.Addr().String()))
 
 	go func() {
 		<-ctx.Done()

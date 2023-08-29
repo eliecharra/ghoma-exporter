@@ -63,7 +63,7 @@ func main() {
 		Addr:    conf.ListenAddress,
 		Handler: servermux,
 	}
-	zap.L().Info("Listening", zap.String("address", conf.ListenAddress))
+	zap.L().Info("Prometheus exporter listening", zap.String("address", conf.ListenAddress))
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil {
 			if !errors.Is(err, http.ErrServerClosed) {
