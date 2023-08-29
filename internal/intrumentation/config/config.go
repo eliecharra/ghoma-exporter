@@ -5,9 +5,9 @@ import (
 )
 
 type Config struct {
-	Env           string
-	ListenAddress string
-	LogLevel      string
+	Env                string `mapstructure:"env"`
+	ListenAddress      string `mapstructure:"listen_address"`
+	LogLevel           string `mapstructure:"log_level"`
 }
 
 func (c Config) IsDev() bool {
@@ -24,14 +24,16 @@ func Get() (*Config, error) {
 	viper.SetDefault("env", "prod")
 	viper.SetDefault("log_level", "info")
 
-	conf := &Config{}
 
-	conf.Env = viper.GetString("env")
-	conf.ListenAddress = viper.GetString("listen_address")
-	if conf.Env == "dev" {
+	if viper.GetString("env") == "dev" {
 		viper.SetDefault("log_level", "debug")
 	}
-	conf.LogLevel = viper.GetString("log_level")
+
+	conf := &Config{}
+	err := viper.Unmarshal(conf)
+	if err != nil {
+		return nil, err
+	}
 
 	return conf, nil
 }
