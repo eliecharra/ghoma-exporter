@@ -99,17 +99,17 @@ func (s *Server) serve() {
 
 func (s *Server) handleDevice(c net.Conn) {
 	defer c.Close()
-	logger := zap.L()
+	logger := zap.L().With(zap.String("remote_address", c.RemoteAddr().String()))
 
 	dev, err := s.register(logger, c)
 	if err != nil {
-		logger.Error("unable to register device", zap.Error(err))
+		logger.Error("unable to register Device", zap.Error(err))
 		return
 	}
 
-	logger = zap.L().With(zap.String("device_id", dev.ID))
+	logger = logger.With(zap.String("device_id", dev.ID))
 	dev.logger = logger
-	logger.Info("Device registered", zap.String("firmware_version", dev.FirmwareVersion))
+	logger.Info("Device registered", zap.String("firmware_version", dev.FirmwareVersion), zap.Uint64("devices_connected", s.devicesCount.Load()))
 
 	for {
 		msg, err := dev.read()
