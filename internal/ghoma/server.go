@@ -8,37 +8,13 @@ import (
 	"net"
 	"sync"
 
-	"github.com/eliecharra/ghoma/protocol"
 	"go.uber.org/zap"
+
+	"github.com/eliecharra/ghoma/protocol"
 )
 
-type device struct {
-	logger *zap.Logger
-
-	ID              string
-	FirmwareVersion string
-	conn            net.Conn
-}
-
-func (d *device) read() (*protocol.Message, error) {
-	msg, err := protocol.ReadMessage(d.conn)
-	if err != nil {
-		return msg, err
-	}
-	d.logger.Debug("read", zap.Any("msg", msg))
-	return msg, nil
-}
-
-func (d *device) write(msg protocol.Message) error {
-	if _, err := d.conn.Write(msg.ToBytes()); err != nil {
-		return err
-	}
-	d.logger.Debug("write", zap.Any("msg", msg))
-	return nil
-}
-
 type handler interface {
-	HandleStatus(device device, msg protocol.Message)
+	HandleStatus(*Device, protocol.Message)
 }
 
 type ServerOptions struct {
@@ -147,8 +123,8 @@ func (s *Server) handleDevice(c net.Conn) {
 	}
 }
 
-func (s *Server) register(logger *zap.Logger, c net.Conn) (*device, error) {
-	dev := &device{
+func (s *Server) register(logger *zap.Logger, c net.Conn) (*Device, error) {
+	dev := &Device{
 		logger: logger,
 		conn:   c,
 	}
@@ -194,7 +170,7 @@ func (s *Server) register(logger *zap.Logger, c net.Conn) (*device, error) {
 	return dev, nil
 }
 
-func (s *Server) handle(dev *device, msg *protocol.Message) {
+func (s *Server) handle(dev *Device, msg *protocol.Message) {
 	switch msg.Command {
 	case protocol.CmdHeartBeat:
 		if err := dev.write(*protocol.MustParse(protocol.HeartBeatReply)); err != nil {
@@ -203,7 +179,7 @@ func (s *Server) handle(dev *device, msg *protocol.Message) {
 		}
 	case protocol.CmdStatus:
 		for _, h := range s.handlers {
-			h.HandleStatus(*dev, *msg)
+			h.HandleStatus(dev, *msg)
 		}
 	}
 }
