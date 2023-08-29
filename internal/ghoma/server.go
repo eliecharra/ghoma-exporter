@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	"go.uber.org/zap"
 
@@ -120,7 +121,12 @@ func (s *Server) handleDevice(c net.Conn) {
 				logger.Debug("unknown command")
 				continue
 			}
-			logger.Error("read error", zap.Error(err))
+			if errors.Is(err, syscall.ECONNRESET) {
+				logger.Info("Device disconnected")
+				return
+			} else {
+				logger.Error("read error", zap.Error(err))
+			}
 			s.devicesCount.Add(^uint64(0))
 			return
 		}
