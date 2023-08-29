@@ -65,7 +65,7 @@ func (s *Server) Start(ctx context.Context) (err error) {
 		s.stop()
 	}()
 
-	s.serve()
+	go s.serve()
 	return nil
 }
 

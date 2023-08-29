@@ -2,15 +2,21 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.uber.org/zap"
+
 	"github.com/eliecharra/ghoma/internal/ghoma"
 	"github.com/eliecharra/ghoma/internal/intrumentation"
 	"github.com/eliecharra/ghoma/internal/intrumentation/config"
-	"go.uber.org/zap"
+	"github.com/eliecharra/ghoma/internal/metrics"
 )
 
 func main() {
@@ -35,11 +41,40 @@ func main() {
 		cancel()
 	}()
 
-	server := ghoma.NewServer(
-		ghoma.ServerOptions{ListenAddr: conf.ListenAddress},
+	metricCollector := metrics.NewCollector()
+	registry := prometheus.NewRegistry()
+	if err := registry.Register(metricCollector); err != nil {
+		zap.L().Fatal("unable to register metrics collector", zap.Error(err))
+	}
+
+	ghomaServer := ghoma.NewServer(
+		ghoma.ServerOptions{ListenAddr: conf.GhomaListenAddress},
+		metricCollector,
 	)
-	if err := server.Start(ctx); err != nil {
-		zap.L().Fatal("Unable to start server", zap.Error(err))
-		os.Exit(1)
+	if err := ghomaServer.Start(ctx); err != nil {
+		zap.L().Fatal("Unable to start ghoma server", zap.Error(err))
+	}
+
+	servermux := http.NewServeMux()
+	servermux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{
+		ErrorHandling: promhttp.ContinueOnError,
+	}))
+	httpServer := &http.Server{
+		Addr:    conf.ListenAddress,
+		Handler: servermux,
+	}
+	zap.L().Info("Listening", zap.String("address", conf.ListenAddress))
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil {
+			zap.L().Fatal("Unable to start exporter", zap.Error(err))
+		}
+	}()
+
+	<-ctx.Done()
+	if err := httpServer.Shutdown(ctx); err != nil {
+		if !errors.Is(err, http.ErrServerClosed) {
+			zap.L().Fatal("Server shutdown failed", zap.Error(err))
+			os.Exit(1)
+		}
 	}
 }

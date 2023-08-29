@@ -7,6 +7,7 @@ import (
 type Config struct {
 	Env                string `mapstructure:"env"`
 	ListenAddress      string `mapstructure:"listen_address"`
+	GhomaListenAddress string `mapstructure:"ghoma_listen_address"`
 	LogLevel           string `mapstructure:"log_level"`
 }
 
@@ -20,10 +21,10 @@ func Get() (*Config, error) {
 	viper.SetEnvPrefix("ghoma")
 	viper.AutomaticEnv()
 
-	viper.SetDefault("listen_address", ":4196")
+	viper.SetDefault("ghoma_listen_address", ":4196")
+	viper.SetDefault("listen_address", ":9101")
 	viper.SetDefault("env", "prod")
 	viper.SetDefault("log_level", "info")
-
 
 	if viper.GetString("env") == "dev" {
 		viper.SetDefault("log_level", "debug")
